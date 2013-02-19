@@ -251,5 +251,46 @@ def highlight_path(renderables, m0, m1, unordered_edge):
             renderables["highlight"][m1][e] = 1
  
 
+#==============================================================
+# Can we flip a matching around a hexagon?  We take the matching as an
+# adjacency map.  To do this, count the vertices around the hexagon
+# which are matched to another point on the hexagon, and see if it is 6. 
+def is_active(hexagon, adj):
+    acc = 0
+    hexdict = {}
+    for p in hexagon:
+        hexdict[p] = 1
+    for p in hexagon:
+        if ((p in adj) and (adj[p] in hexdict)): acc += 1
+    return(acc == 6)
+
+#============================================================================
+# Flip one hexagon.
+def flip_hex(matching, hexagons, index):
+    h = hexagons[index]
+    edges = [frozenset([h[i], h[(i+1)%6]]) for i in range(6)]
+    for e in edges:
+        if(e in matching): 
+            del matching[e]
+        else:
+            matching[e] = 1
+
+
+
+#====================================================================
+# Run the glauber dynamics to randomize one picture
+def randomize(matching, hexlist, steps):
+    for trial in range(steps):
+        # Choose a random index i
+        adj = adjacency_map(matching)
+        activelist = []
+        for i in range(len(hexlist)):
+            if is_active(hexlist[i],adj):
+                activelist.append(i)
+
+        i = numpy.random.randint(len(activelist))
+        if is_active(hexlist[activelist[i]], adj):
+            flip_hex(matching, hexlist, activelist[i]) 
+
 
 
