@@ -1,0 +1,3 @@
+This is some code to quickly check that I'm doing computations in the double dimer model correctly.  I'm learning to use the machinery of Kenyon-Wilson (and others) to count double dimer configurations with certain connectivity between nodes.
+
+Right now I'm particularly interested in doing this on the hexagon lattice with $q^volume$ weights.  So this code will do this count exhaustively to low order in q.
