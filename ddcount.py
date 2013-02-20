@@ -177,120 +177,130 @@ def adjacency_map(M):
 
 #==============================================================
 # Find a path in the superposition of two matchings, starting at
-# a point in the first matching.  Might be a loop.
-# The matchings should be given as adjacency maps (see adjacency_map)
-# The path is returned as a list of vertices.  If the path is closed then
-# the starting vertex is repeated.
+# a node and stopping at another node.  Matchings are represented as 
+# adjacency maps.
 #
-# Lifted from Dimerpaint.  Needs modification before using.
-def find_path(adj1, adj2, start):
-    path = [start];
-    p1 = start;
-    try:
-        p2 = adj2[p1]
-        path.append(p2)
-        p1 = adj1[p2]
-        while(p1 != start):
-            path.append(p1)
-            p2 = adj2[p1]
-            path.append(p2)
-            p1 = adj1[p2]
-        path.append(p1)
-        return path
-    except KeyError: 
-        pass
+# Return the INDEX into the nodes array.
 
-# We fall through to here if path isn't closed.  Get the rest of the path.
-
-    p1 = start
-    try:  
-        p2 = adj1[p1]
-        path.insert(0,p2)
-        p1 = adj2[p2]
-        while(p1 != start):
-            path.insert(0,p1)
-            p2 = adj1[p1]
-            path.insert(0,p2)
-            p1 = adj2[p2]
-
-    except KeyError: 
-        pass
-
-    return path
-
-
-#===================================================================
-# Highlight a path in a dimerpaint configuration
-# Lifted from Dimerpaint.  Needs modification before using.
-def highlight_path(renderables, m0, m1, unordered_edge):
-    matchings = renderables["matchings"]
-    edge = [endpoint for endpoint in unordered_edge]
-    adj0 = adjacency_map(matchings[m0])
-    adj1 = adjacency_map(matchings[m1])
-    path = find_path(adj0, adj1, edge[0])
-
-    #list of edges corresponding to the path
-    loop = []
-    all_highlighted = True
-
-    for i in range(len(path) - 1):
-        e = frozenset([path[i], path[i+1]])
-        loop.append(e)
-        if e not in renderables["highlight"][m0]: 
-            all_highlighted = False
-        if e not in renderables["highlight"][m1]:
-            all_highlighted = False
-
-    if all_highlighted:
-        for e in loop:
-            del renderables["highlight"][m0][e]
-            del renderables["highlight"][m1][e]
+def find_other_end(start, adj1, adj2, nodes):
+    if start in adj1:
+        adj = (adj1, adj2)
     else:
-        for e in loop:
-            renderables["highlight"][m0][e] = 1
-            renderables["highlight"][m1][e] = 1
- 
+        adj = (adj2, adj1)
+
+    parity = 1
+    p = adj[0][start]
+    while not(p in nodes):
+        p = adj[parity][p]
+        parity = (parity + 1)%2
+    return nodes.index(p)
+
+def find_perm(nodes, adj1, adj2):
+    return tuple([find_other_end(i, adj1, adj2, nodes) for i in nodes])
+    
 
 #==============================================================
-# Can we flip a matching around a hexagon?  We take the matching as an
-# adjacency map.  To do this, count the vertices around the hexagon
-# which are matched to another point on the hexagon, and see if it is 6. 
+# Unlike dimerpaint, now we want to flip 
+# unidirectionally - that is, so as only to increase the number of vertices.
+# To do this we make use of an undocumented feature: the vertices of
+# the hexagons are always listed in the same order:
+#
+#                            1---2                         
+#                           /     \                         
+#                          0       3                        
+#                           \     /                         
+#                            5---4                          
+#                                                           
+# Here, the "coordinates" of the vertices are (row, column) in a text file,
+# literally.  So just like the above.  For example, one sample hexagon out of
+# a typical data file is
+# 
+#      ((34, 18), (32, 20), (32, 24), (34, 26), (36, 24), (36, 20))
+#
+# so that one has its leftmost vertex in row 34, column 18
+# So we really need adj(0)=1, adj(2)=3, adj(4) = 5. 
+
 def is_active(hexagon, adj):
     acc = 0
     hexdict = {}
-    for p in hexagon:
-        hexdict[p] = 1
-    for p in hexagon:
-        if ((p in adj) and (adj[p] in hexdict)): acc += 1
-    return(acc == 6)
+
+    if hexagon[0] in adj and hexagon[2] in adj and hexagon[4] in adj:
+        if adj[hexagon[0]] == hexagon[1]: 
+            if adj[hexagon[2]] == hexagon[3]:
+                if adj[hexagon[4]] == hexagon[5]:
+                    return True
+    return False
+
+def all_active(hexagons, adj):
+    return [H for H in hexagons if is_active(H, adj)]
 
 #============================================================================
 # Flip one hexagon.
-def flip_hex(matching, hexagons, index):
-    h = hexagons[index]
+def flip_hex(matching, h):
     edges = [frozenset([h[i], h[(i+1)%6]]) for i in range(6)]
     for e in edges:
         if(e in matching): 
-            del matching[e]
+            matching.remove(e)
         else:
-            matching[e] = 1
-
+            matching.add(e)
 
 
 #====================================================================
-# Run the glauber dynamics to randomize one picture
-def randomize(matching, hexlist, steps):
-    for trial in range(steps):
-        # Choose a random index i
-        adj = adjacency_map(matching)
-        activelist = []
-        for i in range(len(hexlist)):
-            if is_active(hexlist[i],adj):
-                activelist.append(i)
-
-        i = numpy.random.randint(len(activelist))
-        if is_active(hexlist[activelist[i]], adj):
-            flip_hex(matching, hexlist, activelist[i]) 
+# Find all the nodes in the sense of Kenyon-Wilson - that is, the 
+# vertices in the double dimer model (A,B) which are degree 1.
+def find_nodes(A,B):
+    nodes = defaultdict(int)
+    for e in A:
+        for v in e:
+            nodes[v] += 1
+    for e in B:
+        for v in e:
+            nodes[v] += 1
+    return [v for v in nodes if nodes[v]==1]
 
 
+renderables = load(sys.argv[2] + "/")
+hexagons = renderables["hexagons"]
+vertices = renderables["coords"]
+A = renderables["matchings"][0]
+B = renderables["matchings"][1]
+map_A = adjacency_map(A)
+map_B = adjacency_map(B)
 
+nodes = find_nodes(A,B)
+reference_permutation = find_perm(nodes, map_A, map_B)
+
+# OK.  this is getting to be a mess.  
+# Matchings have to be represented as frozensets in order not to double-count
+# anything.  But when we alter the matchings, it's convenient to convert them 
+# back to sets of edges.
+#
+# Sadly, dimerpaint represents matchings as neither of these, but rather as
+# dictionaries keyed by edges.  Hence the following ludicrous statement: 
+start_record = (frozenset(A.keys()), frozenset(B.keys()))
+
+counts = []
+old = set([start_record])   
+series_len = int(sys.argv[1])
+for i in range(series_len):
+    print "counting %d boxes" % i
+    counts.append(len(old))
+    new = [] 
+    for (A,B) in old:
+        map_A = adjacency_map(A)
+        map_B = adjacency_map(B)
+        for H in all_active(hexagons, map_A):
+            new_A = set(A)
+            flip_hex(new_A, H)            
+            new_permutation = find_perm(nodes, adjacency_map(new_A), map_B) 
+            if new_permutation == reference_permutation:
+                new.append((frozenset(new_A), B))
+        for H in all_active(hexagons, map_B):
+            new_B = set(B)
+            flip_hex(new_B, H)            
+            new_permutation = find_perm(nodes, map_A, adjacency_map(new_B)) 
+            if new_permutation == reference_permutation:
+                new.append((A, frozenset(new_B)))
+    old = set(new)
+counts.append(len(old))
+print counts
